@@ -19,12 +19,14 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
-	"github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 	"github.com/hyperledger/fabric-lib-go/healthz"
 	"github.com/hyperledger/fabric-protos-go/orderer/etcdraft"
 	"github.com/hyperledger/fabric/integration/channelparticipation"
@@ -439,6 +441,207 @@ var _ = Describe("EndToEnd", func() {
 		})
 	})
 
+	FDescribe("basic multinode etcdraft network", func() {
+		var (
+			peerRunners []*ginkgomon.Runner
+			processes   map[string]ifrit.Process
+			// ordererRunners   []ifrit.Runner
+			ordererProcesses []ifrit.Process
+			ordererRunners   []*ginkgomon.Runner
+			o1, o2, o3       *nwo.Orderer
+		)
+
+		BeforeEach(func() {
+			network = nwo.New(nwo.MultiNodeEtcdRaft(), testDir, client, StartPort(), components)
+			network.GenerateConfigTree()
+			network.Bootstrap()
+
+			o1, o2, o3 = network.Orderer("orderer1"), network.Orderer("orderer2"), network.Orderer("orderer3")
+			// o1Runner := network.OrdererRunner(o1)
+			o1Runner := network.OrdererRunner(o1, "FABRIC_LOGGING_SPEC=orderer.consensus.etcdraft=debug:info")
+			o2Runner := network.OrdererRunner(o2, "FABRIC_LOGGING_SPEC=orderer.consensus.etcdraft=debug:info")
+			o3Runner := network.OrdererRunner(o3, "FABRIC_LOGGING_SPEC=orderer.consensus.etcdraft=debug:info")
+			ordererRunners = make([]*ginkgomon.Runner, 3)
+			ordererRunners[0] = o1Runner
+			ordererRunners[1] = o2Runner
+			ordererRunners[2] = o3Runner
+			ordererProcesses = make([]ifrit.Process, 3)
+			ordererProcesses[0] = ifrit.Invoke(o1Runner)
+			ordererProcesses[1] = ifrit.Invoke(o2Runner)
+			ordererProcesses[2] = ifrit.Invoke(o3Runner)
+			Eventually(ordererProcesses[0].Ready(), network.EventuallyTimeout).Should(BeClosed())
+			Eventually(ordererProcesses[1].Ready(), network.EventuallyTimeout).Should(BeClosed())
+			Eventually(ordererProcesses[2].Ready(), network.EventuallyTimeout).Should(BeClosed())
+
+			findLeader(ordererRunners)
+			// ordererRunners = network.OrdererGroupRunner()
+			// ordererProcess = ifrit.Invoke(ordererRunner)
+			// Eventually(ordererProcess.Ready(), network.EventuallyTimeout).Should(BeClosed())
+
+			peerRunners = make([]*ginkgomon.Runner, len(network.Peers))
+			processes = map[string]ifrit.Process{}
+			for i, peer := range network.Peers {
+				pr := network.PeerRunner(peer)
+				peerRunners[i] = pr
+				p := ifrit.Invoke(pr)
+				processes[peer.ID()] = p
+				Eventually(p.Ready(), network.EventuallyTimeout).Should(BeClosed())
+			}
+		})
+
+		AfterEach(func() {
+			// if ordererProcess != nil {
+			for _, o := range ordererProcesses {
+				o.Signal(syscall.SIGTERM)
+				Eventually(o.Wait(), network.EventuallyTimeout).Should(Receive())
+			}
+			for _, p := range processes {
+				p.Signal(syscall.SIGTERM)
+				Eventually(p.Wait(), network.EventuallyTimeout).Should(Receive())
+			}
+		})
+
+		It("creates a channel, removes the blockstore/WAL/snapshots for the orderers, and uses the wal-reset", func() {
+			// orderer := network.Orderer("orderer")
+			peer := network.Peer("Org1", "peer0")
+
+			By("Create first channel and deploy the chaincode")
+			network.CreateAndJoinChannel(o1, "testchannel")
+			// network.JoinChannel(o2, "testchannel")
+			// network.JoinChannel(o3, "testchannel")
+			nwo.EnableCapabilities(network, "testchannel", "Application", "V2_0", o1, network.Peer("Org1", "peer0"), network.Peer("Org2", "peer0"))
+			nwo.DeployChaincode(network, "testchannel", o1, chaincode)
+			RunQueryInvokeQuery(network, o1, peer, "testchannel")
+
+			// By("sleeeeeeeeeeeeeeeeeeeeping")
+			// time.Sleep(60 * time.Second)
+
+			// 			By("Create second channel and deploy chaincode")
+			// 			network.CreateAndJoinChannel(orderer, "testchannel2")
+			// 			// channelparticipation.List(network, orderer, []string{"testchannel", "testchannel2"}, "systemchannel")
+			// 			peers := network.PeersWithChannel("testchannel2")
+			// 			nwo.EnableCapabilities(network, "testchannel2", "Application", "V2_0", orderer, network.Peer("Org1", "peer0"), network.Peer("Org2", "peer0"))
+			// 			nwo.ApproveChaincodeForMyOrg(network, "testchannel2", orderer, chaincode, peers...)
+			// 			nwo.CheckCommitReadinessUntilReady(network, "testchannel2", chaincode, network.PeerOrgs(), peers...)
+			// 			nwo.CommitChaincode(network, "testchannel2", orderer, chaincode, peers[0], peers...)
+			// 			nwo.InitChaincode(network, "testchannel2", orderer, chaincode, peers...)
+			// 			RunQueryInvokeQuery(network, orderer, peer, "testchannel2")
+
+			By("stopping all orderers")
+			for _, o := range ordererProcesses {
+				o.Signal(syscall.SIGKILL)
+				Eventually(o.Wait(), network.EventuallyTimeout).Should(Receive())
+			}
+
+			for _, o := range []*nwo.Orderer{o1, o2, o3} {
+				By("deleting the blockstore and index")
+				ordererBlockstore := filepath.Join(network.OrdererDir(o), "system", "chains", "testchannel", "blockfile_000000")
+				os.Remove(ordererBlockstore)
+				os.RemoveAll(filepath.Join(network.OrdererDir(o), "system", "index"))
+
+				By("deleting the WAL and snapshot directories")
+				os.RemoveAll(filepath.Join(network.OrdererDir(o), "etcdraft", "wal", "testchannel"))
+				os.RemoveAll(filepath.Join(network.OrdererDir(o), "etcdraft", "snapshot", "testchannel"))
+
+				// By("sleeeeeeeeeeeeeeeeeeeeping go go copy peer")
+				// time.Sleep(60 * time.Second)
+
+				By("copying the blockstore from the peer")
+				// fmt.Printf("!!!WTL peer dir: %s\n", network.PeerDir(peer))
+				copyFile := func(src, dst string) (int64, error) {
+					sourceFileStat, err := os.Stat(src)
+					if err != nil {
+						return 0, err
+					}
+
+					if !sourceFileStat.Mode().IsRegular() {
+						return 0, fmt.Errorf("%s is not a regular file", src)
+					}
+
+					source, err := os.Open(src)
+					if err != nil {
+						return 0, err
+					}
+					defer source.Close()
+
+					destination, err := os.Create(dst)
+					if err != nil {
+						return 0, err
+					}
+					defer destination.Close()
+					nBytes, err := io.Copy(destination, source)
+					return nBytes, err
+				}
+				peerBlockstore := filepath.Join(network.PeerDir(peer), "filesystem", "ledgersData", "chains", "chains", "testchannel", "blockfile_000000")
+				_, err := copyFile(peerBlockstore, ordererBlockstore)
+				Expect(err).NotTo(HaveOccurred())
+			}
+			// fmt.Printf("!!!WTL copied %d bytes\n", nBytes)
+
+			// peerBlockstoreBytes, err := ioutil.ReadFile(filepath.Join(network.PeerDir(peer), "filesystem", "ledgersData", "chains", "chains", "testchannel2", "blockfile_000000"))
+			// Expect(err).NotTo(HaveOccurred())
+
+			// err = ioutil.WriteFile(ordererBlockstore, peerBlockstoreBytes, 0600)
+			// Expect(err).NotTo(HaveOccurred())
+
+			// By("sleeeeeeeeeeeeeeeeeeeeping")
+			// time.Sleep(30 * time.Second)
+			// s, err := os.Stat(ordererBlockstore)
+			// Expect(err).NotTo(HaveOccurred())
+			// fmt.Printf("!!!WTL file perm: %#o\n", s.Mode().Perm())
+
+			By("restarting the orderers")
+			for i, o := range []*nwo.Orderer{o1, o2, o3} {
+				oRunner := network.OrdererRunner(o, "FABRIC_LOGGING_SPEC=orderer.consensus.etcdraft=debug:info")
+				ordererRunners[i] = oRunner
+				ordererProcesses[i] = ifrit.Invoke(oRunner)
+				Eventually(ordererProcesses[i].Ready(), network.EventuallyTimeout).Should(BeClosed())
+			}
+
+			By("finding leader after start")
+			findLeader(ordererRunners)
+
+			By("queryinvokequery on testchannel")
+			RunQueryInvokeQuery(network, o1, peer, "testchannel", 90)
+
+			// By("creating a new channel")
+			// network.CreateAndJoinChannel(orderer, "testchannel3")
+
+			// By("Update consensus metadata to increase snapshot interval")
+			// snapDir := path.Join(network.RootDir, "orderers", orderer.ID(), "etcdraft", "snapshot", "testchannel")
+			// files, err := ioutil.ReadDir(snapDir)
+			// Expect(err).NotTo(HaveOccurred())
+			// numOfSnaps := len(files)
+
+			// nwo.UpdateConsensusMetadata(network, peer, orderer, "testchannel", func(originalMetadata []byte) []byte {
+			// 	metadata := &etcdraft.ConfigMetadata{}
+			// 	err := proto.Unmarshal(originalMetadata, metadata)
+			// 	Expect(err).NotTo(HaveOccurred())
+
+			// 	// update max in flight messages
+			// 	metadata.Options.MaxInflightBlocks = 1000
+			// 	metadata.Options.SnapshotIntervalSize = 10 * 1024 * 1024 // 10 MB
+
+			// 	// write metadata back
+			// 	newMetadata, err := proto.Marshal(metadata)
+			// 	Expect(err).NotTo(HaveOccurred())
+			// 	return newMetadata
+			// })
+
+			// // assert that no new snapshot is taken because SnapshotIntervalSize has just enlarged
+			// files, err = ioutil.ReadDir(snapDir)
+			// Expect(err).NotTo(HaveOccurred())
+			// Expect(len(files)).To(Equal(numOfSnaps))
+
+			// By("ensuring that static leaders do not give up on retrieving blocks after the orderer goes down")
+			// ordererProcess.Signal(syscall.SIGTERM)
+			// Eventually(ordererProcess.Wait(), network.EventuallyTimeout).Should(Receive())
+			// for _, peerRunner := range peerRunners {
+			// 	Eventually(peerRunner.Err(), network.EventuallyTimeout).Should(gbytes.Say("peer is a static leader, ignoring peer.deliveryclient.reconnectTotalTimeThreshold"))
+			// }
+		})
+	})
+
 	Describe("single node etcdraft network with remapped orderer endpoints", func() {
 		BeforeEach(func() {
 			network = nwo.New(nwo.MinimalRaft(), testDir, client, StartPort(), components)
@@ -571,7 +774,13 @@ var _ = Describe("EndToEnd", func() {
 	})
 })
 
-func RunQueryInvokeQuery(n *nwo.Network, orderer *nwo.Orderer, peer *nwo.Peer, channel string) {
+func RunQueryInvokeQuery(n *nwo.Network, orderer *nwo.Orderer, peer *nwo.Peer, channel string, expectedValue ...int) {
+	var ev int
+	if len(expectedValue) == 0 {
+		ev = 100
+	} else {
+		ev = expectedValue[0]
+	}
 	By("querying the chaincode")
 	sess, err := n.PeerUserSession(peer, "User1", commands.ChaincodeQuery{
 		ChannelID: channel,
@@ -580,7 +789,7 @@ func RunQueryInvokeQuery(n *nwo.Network, orderer *nwo.Orderer, peer *nwo.Peer, c
 	})
 	Expect(err).NotTo(HaveOccurred())
 	Eventually(sess, n.EventuallyTimeout).Should(gexec.Exit(0))
-	Expect(sess).To(gbytes.Say("100"))
+	Expect(sess).To(gbytes.Say(fmt.Sprintf("%d", ev)))
 
 	sess, err = n.PeerUserSession(peer, "User1", commands.ChaincodeInvoke{
 		ChannelID: channel,
@@ -604,7 +813,7 @@ func RunQueryInvokeQuery(n *nwo.Network, orderer *nwo.Orderer, peer *nwo.Peer, c
 	})
 	Expect(err).NotTo(HaveOccurred())
 	Eventually(sess, n.EventuallyTimeout).Should(gexec.Exit(0))
-	Expect(sess).To(gbytes.Say("90"))
+	Expect(sess).To(gbytes.Say(fmt.Sprintf("%d", ev-10)))
 }
 
 func RunRespondWith(n *nwo.Network, orderer *nwo.Orderer, peer *nwo.Peer, channel string) {
@@ -844,4 +1053,50 @@ func hashFile(file string) string {
 
 func chaincodeContainerNameFilter(n *nwo.Network, chaincode nwo.Chaincode) string {
 	return fmt.Sprintf("^/%s-.*-%s-%s$", n.NetworkID, chaincode.Label, hashFile(chaincode.PackageFile))
+}
+
+func findLeader(ordererRunners []*ginkgomon.Runner) int {
+	var wg sync.WaitGroup
+	wg.Add(len(ordererRunners))
+
+	findLeader := func(runner *ginkgomon.Runner) int {
+		Eventually(runner.Err(), time.Minute, time.Second).Should(gbytes.Say("Raft leader changed: [0-9] -> "))
+
+		idBuff := make([]byte, 1)
+		_, err := runner.Err().Read(idBuff)
+		Expect(err).NotTo(HaveOccurred())
+
+		newLeader, err := strconv.ParseInt(string(idBuff), 10, 32)
+		Expect(err).To(BeNil())
+		return int(newLeader)
+	}
+
+	leaders := make(chan int, len(ordererRunners))
+
+	for _, runner := range ordererRunners {
+		go func(runner *ginkgomon.Runner) {
+			defer GinkgoRecover()
+			defer wg.Done()
+
+			for {
+				leader := findLeader(runner)
+				if leader != 0 {
+					leaders <- leader
+					break
+				}
+			}
+		}(runner)
+	}
+
+	wg.Wait()
+
+	close(leaders)
+	firstLeader := <-leaders
+	for leader := range leaders {
+		if firstLeader != leader {
+			Fail(fmt.Sprintf("First leader is %d but saw %d also as a leader", firstLeader, leader))
+		}
+	}
+
+	return firstLeader
 }

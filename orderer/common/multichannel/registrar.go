@@ -11,9 +11,11 @@ package multichannel
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/hyperledger/fabric-config/protolator"
 	cb "github.com/hyperledger/fabric-protos-go/common"
 	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric/bccsp"
@@ -126,7 +128,7 @@ func (r *Registrar) initializeJoinBlockFileRepo() {
 	r.joinBlockFileRepo = joinBlockFileRepo
 }
 
-func (r *Registrar) Initialize(consenters map[string]consensus.Consenter) {
+func (r *Registrar) Initialize(consenters map[string]consensus.Consenter, walReset bool) {
 	r.consenters = consenters
 
 	//TODO reconcile existing channel ledgers with join blocks
@@ -163,6 +165,7 @@ func (r *Registrar) Initialize(consenters map[string]consensus.Consenter) {
 				r.signer,
 				r.blockcutterMetrics,
 				r.bccsp,
+				false,
 			)
 			if err != nil {
 				logger.Panicf("Error creating chain support: %s", err)
@@ -202,11 +205,15 @@ func (r *Registrar) Initialize(consenters map[string]consensus.Consenter) {
 				r.signer,
 				r.blockcutterMetrics,
 				r.bccsp,
+				walReset,
 			)
 			if err != nil {
 				logger.Panicf("Error creating chain support: %s", err)
 			}
 			r.chains[channelID] = chain
+			// if channelID == "testchannel2" {
+			// 	r.RaftWALReset(channelID)
+			// }
 			chain.start()
 		}
 	}
@@ -324,6 +331,32 @@ func (r *Registrar) newLedgerResources(configTx *cb.Envelope) (*ledgerResources,
 	}, nil
 }
 
+func (r *Registrar) RaftWALReset(chainName string) {
+	lf, err := r.ledgerFactory.GetOrCreate(chainName)
+	if err != nil {
+		logger.Panicf("Failed obtaining ledger factory for %s: %v", chainName, err)
+	}
+	chain := r.GetChain(chainName)
+	if chain == nil {
+		fmt.Printf("!!!WTL this must be the initial start for channel %s\n", chainName)
+		return
+		// logger.Panicf("channel %s does not exist", chainName)
+	}
+	configtx := configTx(lf)
+	ledgerResources, err := r.newLedgerResources(configtx)
+	if err != nil {
+		logger.Panicf("Error creating ledger resources: %s", err)
+	}
+
+	fmt.Printf("!!!WTL creating next block for channel %s\n", chainName)
+	// block := chain.CreateNextBlock([]*cb.Envelope{})
+	block := blockledger.CreateNextBlock(ledgerResources, []*cb.Envelope{ /*configtx*/ })
+	protolator.DeepMarshalJSON(os.Stdout, block)
+	chain.WriteBlockNoConsenterMetadata(block, nil)
+	ledgerResources.Append(block)
+
+}
+
 // CreateChain makes the Registrar create a consensus.Chain with the given name.
 func (r *Registrar) CreateChain(chainName string) {
 	lf, err := r.ledgerFactory.GetOrCreate(chainName)
@@ -358,7 +391,7 @@ func (r *Registrar) createNewChain(configtx *cb.Envelope) {
 			logger.Panicf("Error appending genesis block to ledger: %s", err)
 		}
 	}
-	cs, err := newChainSupport(r, ledgerResources, r.consenters, r.signer, r.blockcutterMetrics, r.bccsp)
+	cs, err := newChainSupport(r, ledgerResources, r.consenters, r.signer, r.blockcutterMetrics, r.bccsp, false)
 	if err != nil {
 		logger.Panicf("Error creating chain support: %s", err)
 	}
@@ -533,6 +566,7 @@ func (r *Registrar) joinAsMember(ledgerRes *ledgerResources, configBlock *cb.Blo
 		r.signer,
 		r.blockcutterMetrics,
 		r.bccsp,
+		false,
 	)
 	if err != nil {
 		return types.ChannelInfo{}, errors.Wrap(err, "error creating chain")

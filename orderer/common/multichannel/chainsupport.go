@@ -7,6 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package multichannel
 
 import (
+	"fmt"
+	"os"
+
+	"github.com/hyperledger/fabric-config/protolator"
 	cb "github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
@@ -40,6 +44,10 @@ type ChainSupport struct {
 	consensus.StatusReporter
 }
 
+func raftWALReset(chainName string) {
+
+}
+
 func newChainSupport(
 	registrar *Registrar,
 	ledgerResources *ledgerResources,
@@ -47,15 +55,17 @@ func newChainSupport(
 	signer identity.SignerSerializer,
 	blockcutterMetrics *blockcutter.Metrics,
 	bccsp bccsp.BCCSP,
+	walReset bool,
 ) (*ChainSupport, error) {
-	// Read in the last block and metadata for the channel
 	lastBlock := blockledger.GetBlock(ledgerResources, ledgerResources.Height()-1)
+	// Read in the last block and metadata for the channel
 	metadata, err := protoutil.GetConsenterMetadataFromBlock(lastBlock)
 	// Assuming a block created with cb.NewBlock(), this should not
 	// error even if the orderer metadata is an empty byte slice
 	if err != nil {
 		return nil, errors.Wrapf(err, "error extracting orderer metadata for channel: %s", ledgerResources.ConfigtxValidator().ChannelID())
 	}
+	protolator.DeepMarshalJSON(os.Stdout, metadata)
 
 	// Construct limited support needed as a parameter for additional support
 	cs := &ChainSupport{
@@ -74,6 +84,30 @@ func newChainSupport(
 
 	// Set up the block writer
 	cs.BlockWriter = newBlockWriter(lastBlock, registrar, cs)
+
+	if walReset && ledgerResources.Height() > 1 && ledgerResources.ConfigtxValidator().ChannelID() == "testchannel" {
+		fmt.Printf("!!!WTL resetting for testchannel\n")
+		// r.RaftWALReset("testchannel2")
+		block := cs.BlockWriter.CreateNextBlock([]*cb.Envelope{&cb.Envelope{
+			Payload: protoutil.MarshalOrPanic(&cb.Payload{
+				Header: &cb.Header{
+					ChannelHeader: protoutil.MarshalOrPanic(&cb.ChannelHeader{
+						ChannelId: "testchannel",
+					}),
+				},
+			}),
+		},
+		})
+		// block := blockledger.CreateNextBlock(ledgerResources, []*cb.Envelope{ /*configtx*/ })
+		protolator.DeepMarshalJSON(os.Stdout, block)
+		cs.BlockWriter.WriteBlockNoConsenterMetadata(block, nil)
+		metadata, err = protoutil.GetConsenterMetadataFromBlock(block)
+		// Assuming a block created with cb.NewBlock(), this should not
+		// error even if the orderer metadata is an empty byte slice
+		if err != nil {
+			return nil, errors.Wrapf(err, "error extracting orderer metadata for channel: %s", ledgerResources.ConfigtxValidator().ChannelID())
+		}
+	}
 
 	// Set up the consenter
 	consenterType := ledgerResources.SharedConfig().ConsensusType()

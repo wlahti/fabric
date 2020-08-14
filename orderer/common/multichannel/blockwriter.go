@@ -7,9 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 package multichannel
 
 import (
+	"fmt"
+	"os"
 	"sync"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric-config/protolator"
 	cb "github.com/hyperledger/fabric-protos-go/common"
 	newchannelconfig "github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/configtx"
@@ -175,11 +178,36 @@ func (bw *BlockWriter) WriteBlock(block *cb.Block, encodedMetadataValue []byte) 
 	}()
 }
 
+func (bw *BlockWriter) WriteBlockNoConsenterMetadata(block *cb.Block, encodedMetadataValue []byte) {
+	bw.committingBlock.Lock()
+	bw.lastBlock = block
+
+	go func() {
+		defer bw.committingBlock.Unlock()
+		bw.commitBlockNoConsenterMetadata(encodedMetadataValue)
+	}()
+}
+
 // commitBlock should only ever be invoked with the bw.committingBlock held
 // this ensures that the encoded config sequence numbers stay in sync
 func (bw *BlockWriter) commitBlock(encodedMetadataValue []byte) {
 	bw.addLastConfig(bw.lastBlock)
 	bw.addBlockSignature(bw.lastBlock, encodedMetadataValue)
+	fmt.Println("!!!WTL committing block")
+	protolator.DeepMarshalJSON(os.Stdout, bw.lastBlock)
+
+	err := bw.support.Append(bw.lastBlock)
+	if err != nil {
+		logger.Panicf("[channel: %s] Could not append block: %s", bw.support.ChannelID(), err)
+	}
+	logger.Debugf("[channel: %s] Wrote block [%d]", bw.support.ChannelID(), bw.lastBlock.GetHeader().Number)
+}
+
+func (bw *BlockWriter) commitBlockNoConsenterMetadata(encodedMetadataValue []byte) {
+	bw.addLastConfig(bw.lastBlock)
+	bw.addBlockSignatureNoConsenterMetadata(bw.lastBlock, encodedMetadataValue)
+	fmt.Println("!!!WTL committing block no consenter metadata ")
+	protolator.DeepMarshalJSON(os.Stdout, bw.lastBlock)
 
 	err := bw.support.Append(bw.lastBlock)
 	if err != nil {
@@ -196,6 +224,29 @@ func (bw *BlockWriter) addBlockSignature(block *cb.Block, consenterMetadata []by
 	blockSignatureValue := protoutil.MarshalOrPanic(&cb.OrdererBlockMetadata{
 		LastConfig:        &cb.LastConfig{Index: bw.lastConfigBlockNum},
 		ConsenterMetadata: protoutil.MarshalOrPanic(&cb.Metadata{Value: consenterMetadata}),
+	})
+
+	blockSignature.Signature = protoutil.SignOrPanic(
+		bw.support,
+		util.ConcatenateBytes(blockSignatureValue, blockSignature.SignatureHeader, protoutil.BlockHeaderBytes(block.Header)),
+	)
+
+	block.Metadata.Metadata[cb.BlockMetadataIndex_SIGNATURES] = protoutil.MarshalOrPanic(&cb.Metadata{
+		Value: blockSignatureValue,
+		Signatures: []*cb.MetadataSignature{
+			blockSignature,
+		},
+	})
+}
+
+func (bw *BlockWriter) addBlockSignatureNoConsenterMetadata(block *cb.Block, consenterMetadata []byte) {
+	blockSignature := &cb.MetadataSignature{
+		SignatureHeader: protoutil.MarshalOrPanic(protoutil.NewSignatureHeaderOrPanic(bw.support)),
+	}
+
+	blockSignatureValue := protoutil.MarshalOrPanic(&cb.OrdererBlockMetadata{
+		LastConfig: &cb.LastConfig{Index: bw.lastConfigBlockNum},
+		// ConsenterMetadata: protoutil.MarshalOrPanic(&cb.Metadata{Value: consenterMetadata}),
 	})
 
 	blockSignature.Signature = protoutil.SignOrPanic(

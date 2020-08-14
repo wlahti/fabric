@@ -8,11 +8,12 @@ package etcdraft
 
 import (
 	"bytes"
-	"github.com/hyperledger/fabric/common/channelconfig"
-	"github.com/hyperledger/fabric/protoutil"
 	"path"
 	"reflect"
 	"time"
+
+	"github.com/hyperledger/fabric/common/channelconfig"
+	"github.com/hyperledger/fabric/protoutil"
 
 	"code.cloudfoundry.org/clock"
 	"github.com/golang/protobuf/proto"
@@ -142,7 +143,7 @@ func (c *Consenter) HandleChain(support consensus.ConsenterSupport, metadata *co
 
 	isMigration := (metadata == nil || len(metadata.Value) == 0) && (support.Height() > 1)
 	if isMigration {
-		c.Logger.Debugf("Block metadata is nil at block height=%d, it is consensus-type migration", support.Height())
+		c.Logger.Errorf("!!!WTLBlock metadata is nil at block height=%d, it is consensus-type migration", support.Height())
 	}
 
 	// determine raft replica set mapping for each node to its id

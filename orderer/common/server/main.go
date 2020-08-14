@@ -62,8 +62,9 @@ var logger = flogging.MustGetLogger("orderer.common.server")
 var (
 	app = kingpin.New("orderer", "Hyperledger Fabric orderer node")
 
-	_       = app.Command("start", "Start the orderer node").Default() // preserved for cli compatibility
-	version = app.Command("version", "Show version information")
+	start           = app.Command("start", "Start the orderer node").Default() // preserved for cli compatibility
+	resetAppChannel = start.Flag("wal-reset", "Whether the raft WAL should be reset for the specified channels at startup").Bool()
+	version         = app.Command("version", "Show version information")
 
 	clusterTypes = map[string]struct{}{"etcdraft": {}}
 )
@@ -234,6 +235,7 @@ func Main() {
 		opsSystem,
 		lf,
 		cryptoProvider,
+		*resetAppChannel,
 		tlsCallback,
 	)
 
@@ -716,9 +718,23 @@ func initializeMultichannelRegistrar(
 	healthChecker healthChecker,
 	lf blockledger.Factory,
 	bccsp bccsp.BCCSP,
+	walReset bool,
 	callbacks ...channelconfig.BundleActor,
 ) *multichannel.Registrar {
 	registrar := multichannel.NewRegistrar(*conf, lf, signer, metricsProvider, bccsp, clusterDialer, callbacks...)
+
+	// if walReset {
+	// 	fmt.Println("!!!WTL resetting app channels")
+	// 	registrar.RaftWALReset("testchannel2")
+	// 	// ledger, err := lf.GetOrCreate("testchannel2")
+	// 	// if err != nil {
+	// 	// 	logger.Panic("BADBADNOGOOD")
+	// 	// }
+	// 	// err = ledger.Append(&cb.Block{})
+	// 	// if err != nil {
+	// 	// 	logger.Panic("APPENDBADBADNOGOOD")
+	// 	// }
+	// }
 
 	consenters := map[string]consensus.Consenter{}
 
@@ -741,7 +757,7 @@ func initializeMultichannelRegistrar(
 	// Note, we pass a 'nil' channel here, we could pass a channel that
 	// closes if we wished to cleanup this routine on exit.
 	go kafkaMetrics.PollGoMetricsUntilStop(time.Minute, nil)
-	registrar.Initialize(consenters)
+	registrar.Initialize(consenters, walReset)
 	return registrar
 }
 

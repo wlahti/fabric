@@ -127,12 +127,14 @@ func MultiChannelBasicSolo() *Config {
 	config.Channels = []*Channel{
 		{Name: "testchannel", Profile: "TwoOrgsChannel"},
 		{Name: "testchannel2", Profile: "TwoOrgsChannel"},
+		{Name: "testchannel3", Profile: "TwoOrgsChannel"},
 	}
 
 	for _, peer := range config.Peers {
 		peer.Channels = []*PeerChannel{
 			{Name: "testchannel", Anchor: true},
 			{Name: "testchannel2", Anchor: true},
+			{Name: "testchannel3", Anchor: true},
 		}
 	}
 
