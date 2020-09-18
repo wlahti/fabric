@@ -19,6 +19,7 @@ import (
 	pb "github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/bccsp/factory"
+	"github.com/hyperledger/fabric/bccsp/pkcs11"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/core/config"
@@ -135,6 +136,7 @@ func InitCrypto(mspMgrConfigDir, localMSPID, localMSPType string) error {
 	if err := viper.UnmarshalKey("peer.BCCSP", &bccspConfig); err != nil {
 		return errors.WithMessage(err, "could not decode peer BCCSP configuration")
 	}
+	setBccspConfigFromEnv(bccspConfig)
 
 	err = mspmgmt.LoadLocalMspWithType(mspMgrConfigDir, bccspConfig, localMSPID, localMSPType)
 	if err != nil {
@@ -142,6 +144,22 @@ func InitCrypto(mspMgrConfigDir, localMSPID, localMSPType string) error {
 	}
 
 	return nil
+}
+
+func setBccspConfigFromEnv(bccspConfig *factory.FactoryOpts) {
+	if bccspDefault := viper.GetString("peer.bccsp.default"); bccspDefault != "" {
+		bccspConfig.Default = bccspDefault
+	}
+	if bccspConfig.Default != "PKCS11" {
+		return
+	}
+	bccspConfig.PKCS11 = &pkcs11.PKCS11Opts{
+		Hash:     "SHA2",
+		Security: 256,
+		Library:  viper.GetString("peer.bccsp.pkcs11.library"),
+		Pin:      viper.GetString("peer.bccsp.pkcs11.pin"),
+		Label:    viper.GetString("peer.bccsp.pkcs11.label"),
+	}
 }
 
 // SetBCCSPKeystorePath sets the file keystore path for the SW BCCSP provider
