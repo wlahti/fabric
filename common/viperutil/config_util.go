@@ -121,7 +121,7 @@ func (c *ConfigParser) getConfigFile() string {
 // ReadInConfig reads and unmarshals the config file.
 func (c *ConfigParser) ReadInConfig() error {
 	cf := c.getConfigFile()
-	logger.Debugf("Attempting to open the config file: %s", cf)
+	logger.Errorf("Attempting to open the config file: %s", cf)
 	file, err := os.Open(cf)
 	if err != nil {
 		logger.Errorf("Unable to open the config file: %s", cf)
@@ -448,4 +448,44 @@ func (c *ConfigParser) EnhancedExactUnmarshal(output interface{}) error {
 		return err
 	}
 	return decoder.Decode(leafKeys)
+}
+
+// EnhancedExactUnmarshal is intended to unmarshal a config file into a structure
+// producing error when extraneous variables are introduced and supporting
+// the time.Duration type
+func (c *ConfigParser) EnhancedExactUnmarshalKey(key string, output interface{}) error {
+	oType := reflect.TypeOf(output)
+	if oType.Kind() != reflect.Ptr {
+		return errors.Errorf("supplied output argument must be a pointer to a struct but is not pointer")
+	}
+	eType := oType.Elem()
+	if eType.Kind() != reflect.Struct {
+		return errors.Errorf("supplied output argument must be a pointer to a struct, but it is pointer to something else: %s", eType.Kind())
+	}
+
+	baseKeys := c.config
+	leafKeys := getKeysRecursively("", c.getFromEnv, baseKeys, eType)
+
+	logger.Errorf("leaf keys: %+v", leafKeys)
+	config := &mapstructure.DecoderConfig{
+		ErrorUnused:      true,
+		Metadata:         nil,
+		Result:           output,
+		WeaklyTypedInput: true,
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			bccspHook,
+			mapstructure.StringToTimeDurationHookFunc(),
+			customDecodeHook,
+			byteSizeDecodeHook,
+			stringFromFileDecodeHook,
+			pemBlocksFromFileDecodeHook,
+			kafkaVersionDecodeHook,
+		),
+	}
+
+	decoder, err := mapstructure.NewDecoder(config)
+	if err != nil {
+		return err
+	}
+	return decoder.Decode(leafKeys[key])
 }
