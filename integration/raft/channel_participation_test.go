@@ -526,6 +526,7 @@ var _ = Describe("ChannelParticipation", func() {
 				startOrderer(o)
 			}
 
+			// Replace with listing logic
 			findLeader(ordererRunners)
 
 			By("creating an application channel using system channel")
@@ -694,7 +695,6 @@ var _ = Describe("ChannelParticipation", func() {
 			channelparticipation.Join(network, orderer3, network.SystemChannel.Name, systemChannelBlock, expectedChannelInfoPT)
 
 			for i, o := range orderers {
-				network.GenerateOrdererConfig(o)
 				restartOrderer(o, i)
 			}
 
@@ -716,6 +716,131 @@ var _ = Describe("ChannelParticipation", func() {
 			}
 		})
 
+		FIt("Creating the system channel with config block with number >0, when there are already channels referenced (created) by it, such that on boarding is needed for both the system channel and additional channels.", func() {
+			orderer1 := network.Orderer("orderer1")
+			orderer2 := network.Orderer("orderer2")
+			orderer3 := network.Orderer("orderer3")
+			orderers := []*nwo.Orderer{orderer1, orderer2, orderer3}
+			peer := network.Peer("Org1", "peer0")
+			for _, o := range orderers {
+				startOrderer(o)
+			}
+
+			systemChannelBlockBytes, err := ioutil.ReadFile(network.OutputBlockPath(network.SystemChannel.Name))
+			Expect(err).NotTo(HaveOccurred())
+			systemChannelBlock := &common.Block{}
+			err = proto.Unmarshal(systemChannelBlockBytes, systemChannelBlock)
+			Expect(err).NotTo(HaveOccurred())
+
+			expectedChannelInfoPT := channelparticipation.ChannelInfo{
+				Name:            network.SystemChannel.Name,
+				URL:             fmt.Sprintf("/participation/v1/channels/%s", network.SystemChannel.Name),
+				Status:          "inactive",
+				ClusterRelation: "member",
+				Height:          1,
+			}
+
+			channelparticipation.Join(network, orderer1, network.SystemChannel.Name, systemChannelBlock, expectedChannelInfoPT)
+			channelparticipation.Join(network, orderer2, network.SystemChannel.Name, systemChannelBlock, expectedChannelInfoPT)
+
+			for i, o := range []*nwo.Orderer{orderer1, orderer2} {
+				restartOrderer(o, i)
+			}
+
+			// findLeader(ordererRunners[:1])
+
+			By("listing the channels")
+			expectedChannelInfo := channelparticipation.ChannelInfo{
+				Name:            network.SystemChannel.Name,
+				URL:             fmt.Sprintf("/participation/v1/channels/%s", network.SystemChannel.Name),
+				Status:          "active",
+				ClusterRelation: "member",
+				Height:          1,
+			}
+			for _, o := range []*nwo.Orderer{orderer1, orderer2} {
+				By("listing single channel")
+				Eventually(func() channelparticipation.ChannelInfo {
+					return channelparticipation.ListOne(network, o, network.SystemChannel.Name)
+				}, network.EventuallyTimeout).Should(Equal(expectedChannelInfo))
+			}
+
+			// By("updating system channel config")
+			// channelConfig := nwo.GetConfig(network, peer, orderer1, network.SystemChannel.Name)
+			// c := configtx.New(channelConfig)
+			// err = c.Orderer().AddCapability("V1_1")
+			// Expect(err).NotTo(HaveOccurred())
+			// computeSignSubmitConfigUpdate(network, orderer1, peer, c, network.SystemChannel.Name)
+			//
+			// By("fetching config block")
+			// configBlockPT := nwo.GetConfigBlock(network, peer, orderer2, network.SystemChannel.Name)
+			// fmt.Printf("!!!ARGH %v", configBlockPT.Header.Number)
+			expectedChannelInfoMember := channelparticipation.ChannelInfo{
+				Name:            network.SystemChannel.Name,
+				URL:             fmt.Sprintf("/participation/v1/channels/%s", network.SystemChannel.Name),
+				Status:          "inactive",
+				ClusterRelation: "member",
+				Height:          0,
+			}
+
+			By("join orderer3 to system channel")
+			channelparticipation.Join(network, orderer3, network.SystemChannel.Name, systemChannelBlock, expectedChannelInfoMember)
+
+			By("restarting orderer3")
+			restartOrderer(orderer3, 2)
+
+			By("listing the channels")
+			expectedChannelInfo = channelparticipation.ChannelInfo{
+				Name:            network.SystemChannel.Name,
+				URL:             fmt.Sprintf("/participation/v1/channels/%s", network.SystemChannel.Name),
+				Status:          "active",
+				ClusterRelation: "member",
+				Height:          1,
+			}
+			for _, o := range orderers {
+				By("listing single channel")
+				Eventually(func() channelparticipation.ChannelInfo {
+					return channelparticipation.ListOne(network, o, network.SystemChannel.Name)
+				}, network.EventuallyTimeout).Should(Equal(expectedChannelInfo))
+			}
+
+			network.CreateChannel("testchannel1", orderer1, peer)
+			network.CreateChannel("testchannel1", orderer3, peer)
+			network.CreateChannel("testchannel2", orderer3, peer)
+			network.CreateChannel("testchannel3", orderer2, peer)
+
+			submitTxn(orderer1, peer, network, orderers, 1, channelparticipation.ChannelInfo{
+				Name:            "testchannel1",
+				URL:             fmt.Sprintf("/participation/v1/channels/%s", "testchannel1"),
+				Status:          "active",
+				ClusterRelation: "member",
+				Height:          1,
+			})
+
+			submitTxn(orderer3, peer, network, orderers, 1, channelparticipation.ChannelInfo{
+				Name:            "testchannel1",
+				URL:             fmt.Sprintf("/participation/v1/channels/%s", "testchannel1"),
+				Status:          "active",
+				ClusterRelation: "member",
+				Height:          2,
+			})
+
+			submitTxn(orderer3, peer, network, orderers, 1, channelparticipation.ChannelInfo{
+				Name:            "testchannel2",
+				URL:             fmt.Sprintf("/participation/v1/channels/%s", "testchannel2"),
+				Status:          "active",
+				ClusterRelation: "member",
+				Height:          1,
+			})
+
+			submitTxn(orderer2, peer, network, orderers, 1, channelparticipation.ChannelInfo{
+				Name:            "testchannel3",
+				URL:             fmt.Sprintf("/participation/v1/channels/%s", "testchannel3"),
+				Status:          "active",
+				ClusterRelation: "member",
+				Height:          1,
+			})
+
+		})
 	})
 })
 
