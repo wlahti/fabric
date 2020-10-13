@@ -638,6 +638,85 @@ var _ = Describe("ChannelParticipation", func() {
 			}
 		})
 	})
+
+	Describe("create system channel on empty network", func() {
+		startOrderer := func(o *nwo.Orderer) {
+			ordererRunner := network.OrdererRunner(o)
+			ordererProcess := ifrit.Invoke(ordererRunner)
+			Eventually(ordererProcess.Ready(), network.EventuallyTimeout).Should(BeClosed())
+			ordererProcesses = append(ordererProcesses, ordererProcess)
+			ordererRunners = append(ordererRunners, ordererRunner)
+		}
+
+		restartOrderer := func(o *nwo.Orderer, index int) {
+			ordererProcesses[index].Signal(syscall.SIGKILL)
+			Eventually(ordererProcesses[index].Wait(), network.EventuallyTimeout).Should(Receive(MatchError("exit status 137")))
+			ordererRunner := network.OrdererRunner(o)
+			ordererProcess := ifrit.Invoke(ordererRunner)
+			Eventually(ordererProcess.Ready(), network.EventuallyTimeout).Should(BeClosed())
+			ordererProcesses[index] = ordererProcess
+			ordererRunners[index] = ordererRunner
+		}
+
+		BeforeEach(func() {
+			network = nwo.New(nwo.MultiNodeEtcdRaft(), testDir, client, StartPort(), components)
+			network.Consensus.ChannelParticipationEnabled = true
+			network.Consensus.BootstrapMethod = "none"
+			network.GenerateConfigTree()
+			network.Bootstrap()
+		})
+
+		It("Creating the system channel with a genesis block, so no onboarding is needed", func() {
+			orderer1 := network.Orderer("orderer1")
+			orderer2 := network.Orderer("orderer2")
+			orderer3 := network.Orderer("orderer3")
+			orderers := []*nwo.Orderer{orderer1, orderer2, orderer3}
+			for _, o := range orderers {
+				startOrderer(o)
+			}
+
+			systemChannelBlockBytes, err := ioutil.ReadFile(network.OutputBlockPath(network.SystemChannel.Name))
+			Expect(err).NotTo(HaveOccurred())
+			systemChannelBlock := &common.Block{}
+			err = proto.Unmarshal(systemChannelBlockBytes, systemChannelBlock)
+			Expect(err).NotTo(HaveOccurred())
+
+			expectedChannelInfoPT := channelparticipation.ChannelInfo{
+				Name:            network.SystemChannel.Name,
+				URL:             fmt.Sprintf("/participation/v1/channels/%s", network.SystemChannel.Name),
+				Status:          "inactive",
+				ClusterRelation: "member",
+				Height:          1,
+			}
+
+			channelparticipation.Join(network, orderer1, network.SystemChannel.Name, systemChannelBlock, expectedChannelInfoPT)
+			channelparticipation.Join(network, orderer2, network.SystemChannel.Name, systemChannelBlock, expectedChannelInfoPT)
+			channelparticipation.Join(network, orderer3, network.SystemChannel.Name, systemChannelBlock, expectedChannelInfoPT)
+
+			for i, o := range orderers {
+				network.GenerateOrdererConfig(o)
+				restartOrderer(o, i)
+			}
+
+			findLeader(ordererRunners)
+
+			By("listing the channels")
+			expectedChannelInfo := channelparticipation.ChannelInfo{
+				Name:            network.SystemChannel.Name,
+				URL:             fmt.Sprintf("/participation/v1/channels/%s", network.SystemChannel.Name),
+				Status:          "active",
+				ClusterRelation: "member",
+				Height:          1,
+			}
+			for _, o := range orderers {
+				By("listing single channel")
+				Eventually(func() channelparticipation.ChannelInfo {
+					return channelparticipation.ListOne(network, o, network.SystemChannel.Name)
+				}, network.EventuallyTimeout).Should(Equal(expectedChannelInfo))
+			}
+		})
+
+	})
 })
 
 func submitTxn(o *nwo.Orderer, peer *nwo.Peer, network *nwo.Network, orderers []*nwo.Orderer,
