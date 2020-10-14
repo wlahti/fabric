@@ -717,6 +717,7 @@ var _ = Describe("ChannelParticipation", func() {
 		})
 
 		FIt("Creating the system channel with config block with number >0, when there are already channels referenced (created) by it, such that on boarding is needed for both the system channel and additional channels.", func() {
+			// It("Creating the system channel with config block with number >0, when there are already channels referenced (created) by it, such that on boarding is needed for both the system channel and additional channels.", func() {
 			orderer1 := network.Orderer("orderer1")
 			orderer2 := network.Orderer("orderer2")
 			orderer3 := network.Orderer("orderer3")
@@ -764,16 +765,16 @@ var _ = Describe("ChannelParticipation", func() {
 				}, network.EventuallyTimeout).Should(Equal(expectedChannelInfo))
 			}
 
-			// By("updating system channel config")
-			// channelConfig := nwo.GetConfig(network, peer, orderer1, network.SystemChannel.Name)
-			// c := configtx.New(channelConfig)
-			// err = c.Orderer().AddCapability("V1_1")
-			// Expect(err).NotTo(HaveOccurred())
-			// computeSignSubmitConfigUpdate(network, orderer1, peer, c, network.SystemChannel.Name)
-			//
-			// By("fetching config block")
-			// configBlockPT := nwo.GetConfigBlock(network, peer, orderer2, network.SystemChannel.Name)
-			// fmt.Printf("!!!ARGH %v", configBlockPT.Header.Number)
+			By("updating system channel config")
+			channelConfig := nwo.GetConfig(network, peer, orderer1, network.SystemChannel.Name)
+			c := configtx.New(channelConfig)
+			err = c.Orderer().AddCapability("V1_1")
+			Expect(err).NotTo(HaveOccurred())
+			computeSignSubmitConfigUpdate(network, orderer1, peer, c, network.SystemChannel.Name)
+
+			By("fetching config block")
+			configBlockPT := nwo.GetConfigBlock(network, peer, orderer2, network.SystemChannel.Name)
+			fmt.Printf("!!!ARGH %v", configBlockPT.Header.Number)
 			expectedChannelInfoMember := channelparticipation.ChannelInfo{
 				Name:            network.SystemChannel.Name,
 				URL:             fmt.Sprintf("/participation/v1/channels/%s", network.SystemChannel.Name),
@@ -783,7 +784,7 @@ var _ = Describe("ChannelParticipation", func() {
 			}
 
 			By("join orderer3 to system channel")
-			channelparticipation.Join(network, orderer3, network.SystemChannel.Name, systemChannelBlock, expectedChannelInfoMember)
+			channelparticipation.Join(network, orderer3, network.SystemChannel.Name, configBlockPT, expectedChannelInfoMember)
 
 			By("restarting orderer3")
 			restartOrderer(orderer3, 2)
