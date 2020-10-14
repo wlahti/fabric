@@ -111,6 +111,7 @@ func Main() {
 	if err != nil {
 		logger.Panicf("Failed to create ledger factory: %v", err)
 	}
+	logger.Errorf("!!!WTL len channelIDs(): %d", len(lf.ChannelIDs()))
 
 	var bootstrapBlock *cb.Block
 	if conf.General.BootstrapMethod == "file" {
@@ -413,11 +414,22 @@ func extractSysChanLastConfig(lf blockledger.Factory, bootstrapBlock *cb.Block) 
 // config block for the system channel. Returns nil if no system channel
 // was found.
 func extractSystemChannel(lf blockledger.Factory, bccsp bccsp.BCCSP) *cb.Block {
+	logger.Errorf("!!!WTL lf.ChannelIDs(): %s", lf.ChannelIDs())
 	for _, cID := range lf.ChannelIDs() {
 		channelLedger, err := lf.GetOrCreate(cID)
 		if err != nil {
 			logger.Panicf("Failed getting channel %v's ledger: %v", cID, err)
 		}
+		if channelLedger.Height() == 0 {
+			// logger.Errorf("!!!WTL sleeping")
+			// time.Sleep(30 * time.Second)
+			// }
+			// when restarting orderer after using channel participation to join
+			// the system channel with a config block, skip this step since we need
+			// the registrar to use the joinBlock from the filerepo instead
+			return nil
+		}
+		logger.Errorf("!!!WTL channel %s height %d", cID, channelLedger.Height())
 		channelConfigBlock := multichannel.ConfigBlockOrPanic(channelLedger)
 
 		err = onboarding.ValidateBootstrapBlock(channelConfigBlock, bccsp)

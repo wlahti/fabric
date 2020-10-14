@@ -557,6 +557,7 @@ var _ = Describe("EndToEnd reconfiguration and onboarding", func() {
 			}
 		})
 
+		// FIt("is still possible to onboard new orderers", func() {
 		It("is still possible to onboard new orderers", func() {
 			// In this test, we have 3 OSNs and we rotate their TLS certificates one by one,
 			// by adding the future certificate to the channel, killing the OSN to make it
