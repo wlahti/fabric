@@ -203,29 +203,36 @@ func (r *Replicator) PullChannel(channel string) error {
 	// bootstrap block of the system channel.
 	// Otherwise, we'd be left with a block gap.
 	if channel == r.SystemChannel && latestHeight-1 < r.BootBlock.Header.Number {
-		return errors.Errorf("latest height found among system channel(%s) orderers is %d, but the boot block's "+
-			"sequence is %d", r.SystemChannel, latestHeight, r.BootBlock.Header.Number)
+		return errors.Errorf("latest height found among system channel(%s) orderers is %d, but the boot block's sequence is %d", r.SystemChannel, latestHeight, r.BootBlock.Header.Number)
 	}
+	r.Logger.Errorf("!!!WTL pulling blocks for %s. latestheight: %d bootBlock number: %d", channel, latestHeight, r.BootBlock.Header.Number)
 	return r.pullChannelBlocks(channel, puller, latestHeight, ledger)
 }
 
 func (r *Replicator) pullChannelBlocks(channel string, puller *BlockPuller, latestHeight uint64, ledger LedgerWriter) error {
+	r.Logger.Errorf("!!!WTL begin: channel %s: latestHeight: %d", channel, latestHeight)
+	defer r.Logger.Error("!!!WTL end")
 	nextBlockToPull := ledger.Height()
 	if nextBlockToPull == latestHeight {
 		r.Logger.Infof("Latest height found (%d) is equal to our height, skipping pulling channel %s", latestHeight, channel)
 		return nil
 	}
 	// Pull the next block and remember its hash.
+	r.Logger.Errorf("!!!WTL pulling block")
 	nextBlock := puller.PullBlock(nextBlockToPull)
+	r.Logger.Errorf("!!!WTL pulled block")
 	if nextBlock == nil {
+		r.Logger.Error("!!!WTL nil nextblock")
 		return ErrRetryCountExhausted
 	}
 	r.appendBlock(nextBlock, ledger, channel)
 	actualPrevHash := protoutil.BlockHeaderHash(nextBlock.Header)
 
 	for seq := uint64(nextBlockToPull + 1); seq < latestHeight; seq++ {
+		r.Logger.Error("!!!WTL looping")
 		block := puller.PullBlock(seq)
 		if block == nil {
+			r.Logger.Error("!!!WTL nil block")
 			return ErrRetryCountExhausted
 		}
 		reportedPrevHash := block.Header.PreviousHash
@@ -235,6 +242,7 @@ func (r *Replicator) pullChannelBlocks(channel string, puller *BlockPuller, late
 		}
 		actualPrevHash = protoutil.BlockHeaderHash(block.Header)
 		if channel == r.SystemChannel && block.Header.Number == r.BootBlock.Header.Number {
+			r.Logger.Error("!!!WTL hi")
 			r.compareBootBlockWithSystemChannelLastConfigBlock(block)
 			r.appendBlock(block, ledger, channel)
 			// No need to pull further blocks from the system channel
@@ -546,6 +554,8 @@ func (ci *ChainInspector) Channels() []ChannelGenesisBlock {
 		if block == nil {
 			ci.Logger.Panicf("Failed pulling block [%d] from the system channel", seq)
 		}
+		// ci.Logger.Errorf("!!!WTL pulled channel block")
+		// protolator.DeepMarshalJSON(os.Stdout, block)
 		ci.validateHashPointer(block, prevHash)
 		// Set the previous hash for the next iteration
 		prevHash = protoutil.BlockHeaderHash(block.Header)
@@ -622,9 +632,12 @@ func ExtractGenesisBlock(logger *flogging.FabricLogger, block *common.Block) (st
 		return "", nil, err
 	}
 	// The transaction is not orderer transaction
-	if common.HeaderType(chdr.Type) != common.HeaderType_ORDERER_TRANSACTION {
+	if common.HeaderType(chdr.Type) != common.HeaderType_ORDERER_TRANSACTION { // && common.HeaderType(chdr.Type) != common.HeaderType_CONFIG {
+		logger.Warningf("!!!WTL chdr.Type: %s", common.HeaderType(chdr.Type))
 		return "", nil, nil
 	}
+
+	// if common.HeaderType(chdr.Type) == common.HeaderType_ORDERER_TRANSACTION {
 	systemChannelName := chdr.ChannelId
 	innerEnvelope, err := protoutil.UnmarshalEnvelope(payload.Data)
 	if err != nil {
@@ -651,6 +664,7 @@ func ExtractGenesisBlock(logger *flogging.FabricLogger, block *common.Block) (st
 		logger.Warnf("Expecting config envelope in %s block to target a different "+
 			"channel other than system channel '%s'", common.HeaderType_ORDERER_TRANSACTION, systemChannelName)
 		return "", nil, nil
+		// }
 	}
 
 	metadata := &common.BlockMetadata{
