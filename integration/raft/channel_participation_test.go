@@ -797,8 +797,7 @@ var _ = Describe("ChannelParticipation", func() {
 			computeSignSubmitConfigUpdate(network, orderer1, peer, c, network.SystemChannel.Name)
 
 			By("fetching config block")
-			configBlockPT := nwo.GetConfigBlock(network, peer, orderer2, network.SystemChannel.Name)
-			fmt.Printf("!!!ARGH %d\n", configBlockPT.Header.Number)
+			configBlock := nwo.GetConfigBlock(network, peer, orderer2, network.SystemChannel.Name)
 			expectedChannelInfoMember := channelparticipation.ChannelInfo{
 				Name:            network.SystemChannel.Name,
 				URL:             fmt.Sprintf("/participation/v1/channels/%s", network.SystemChannel.Name),
@@ -808,7 +807,7 @@ var _ = Describe("ChannelParticipation", func() {
 			}
 
 			By("join orderer3 to system channel")
-			channelparticipation.Join(network, orderer3, network.SystemChannel.Name, configBlockPT, expectedChannelInfoMember)
+			channelparticipation.Join(network, orderer3, network.SystemChannel.Name, configBlock, expectedChannelInfoMember)
 
 			By("restarting orderer3")
 			restartOrderer(orderer3, 2)

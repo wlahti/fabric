@@ -91,7 +91,6 @@ func (p *BlockPuller) disconnect() {
 func (p *BlockPuller) PullBlock(seq uint64) *common.Block {
 	retriesLeft := p.MaxPullBlockRetries
 	for {
-		p.Logger.Errorf("!!!WTL pulling block with retry timeout: %s", p.RetryTimeout)
 		block := p.tryFetchBlock(seq)
 		if block != nil {
 			return block
@@ -101,7 +100,6 @@ func (p *BlockPuller) PullBlock(seq uint64) *common.Block {
 			p.Logger.Errorf("Failed pulling block [%d]: retry count exhausted(%d)", seq, p.MaxPullBlockRetries)
 			return nil
 		}
-		p.Logger.Errorf("!!!WTL sleeping: %s", p.RetryTimeout)
 		time.Sleep(p.RetryTimeout)
 	}
 }
@@ -139,7 +137,7 @@ func (p *BlockPuller) tryFetchBlock(seq uint64) *common.Block {
 		reConnected = true
 		p.connectToSomeEndpoint(seq)
 		if p.isDisconnected() {
-			p.Logger.Errorf("Failed to connect to some endpoint, going to try again in %v", p.RetryTimeout)
+			p.Logger.Debugf("Failed to connect to some endpoint, going to try again in %v", p.RetryTimeout)
 			time.Sleep(p.RetryTimeout)
 		}
 		if retriesLeft == 0 && p.MaxPullBlockRetries > 0 {
@@ -177,8 +175,6 @@ func (p *BlockPuller) setCancelStreamFunc(f func()) {
 }
 
 func (p *BlockPuller) pullBlocks(seq uint64, reConnected bool) error {
-	p.Logger.Errorf("!!!WTL begin")
-	defer p.Logger.Errorf("!!!WTL end")
 	env, err := p.seekNextEnvelope(seq)
 	if err != nil {
 		p.Logger.Errorf("Failed creating seek envelope: %v", err)
@@ -265,7 +261,6 @@ func (p *BlockPuller) isDisconnected() bool {
 // connectToSomeEndpoint makes the BlockPuller connect to some endpoint that has
 // the given minimum block sequence.
 func (p *BlockPuller) connectToSomeEndpoint(minRequestedSequence uint64) {
-	p.Logger.Errorf("!!!WTL connecting to some endpoint. seq: %d", minRequestedSequence)
 	// Probe all endpoints in parallel, searching an endpoint with a given minimum block sequence
 	// and then sort them by their endpoints to a map.
 	endpointsInfo := p.probeEndpoints(minRequestedSequence).byEndpoints()
@@ -294,8 +289,6 @@ func (p *BlockPuller) connectToSomeEndpoint(minRequestedSequence uint64) {
 // probeEndpoints reaches to all endpoints known and returns the latest block sequences
 // of the endpoints, as well as gRPC connections to them.
 func (p *BlockPuller) probeEndpoints(minRequestedSequence uint64) *endpointInfoBucket {
-	p.Logger.Errorf("!!!WTL begin")
-	defer p.Logger.Errorf("!!!WTL end")
 	endpointsInfo := make(chan *endpointInfo, len(p.Endpoints))
 
 	var wg sync.WaitGroup
@@ -307,9 +300,7 @@ func (p *BlockPuller) probeEndpoints(minRequestedSequence uint64) *endpointInfoB
 	for _, endpoint := range p.Endpoints {
 		go func(endpoint EndpointCriteria) {
 			defer wg.Done()
-			p.Logger.Errorf("!!!WTL probing endpoint %v", endpoint)
 			ei, err := p.probeEndpoint(endpoint, minRequestedSequence)
-			p.Logger.Errorf("!!!WTL ei: %+v", ei)
 			if err != nil {
 				p.Logger.Warningf("Received error of type '%v' from %s", err, endpoint.Endpoint)
 				p.Logger.Debugf("%s's TLSRootCAs are %s", endpoint.Endpoint, endpoint.TLSRootCAs)
@@ -324,9 +315,7 @@ func (p *BlockPuller) probeEndpoints(minRequestedSequence uint64) *endpointInfoB
 			endpointsInfo <- ei
 		}(endpoint)
 	}
-	p.Logger.Errorf("!!!WTL waiting")
 	wg.Wait()
-	p.Logger.Errorf("!!!WTL done waiting")
 
 	close(endpointsInfo)
 	eib := &endpointInfoBucket{
@@ -346,8 +335,6 @@ func (p *BlockPuller) probeEndpoints(minRequestedSequence uint64) *endpointInfoB
 // probeEndpoint returns a gRPC connection and the latest block sequence of an endpoint with the given
 // requires minimum sequence, or error if something goes wrong.
 func (p *BlockPuller) probeEndpoint(endpoint EndpointCriteria, minRequestedSequence uint64) (*endpointInfo, error) {
-	p.Logger.Errorf("begin")
-	defer p.Logger.Errorf("end")
 	conn, err := p.Dialer.Dial(endpoint)
 	if err != nil {
 		p.Logger.Warningf("Failed connecting to %s: %v", endpoint, err)
