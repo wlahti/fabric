@@ -673,11 +673,12 @@ var _ = Describe("ChannelParticipation", func() {
 		}
 
 		restartOrderer := func(o *nwo.Orderer, index int) {
+			By("restarting " + o.Name)
 			ordererProcesses[index].Signal(syscall.SIGKILL)
 			Eventually(ordererProcesses[index].Wait(), network.EventuallyTimeout).Should(Receive(MatchError("exit status 137")))
 			ordererRunner := network.OrdererRunner(o)
 			ordererProcess := ifrit.Invoke(ordererRunner)
-			Eventually(ordererProcess.Ready(), 2*network.EventuallyTimeout).Should(BeClosed())
+			Eventually(ordererProcess.Ready(), network.EventuallyTimeout).Should(BeClosed())
 			ordererProcesses[index] = ordererProcess
 			ordererRunners[index] = ordererRunner
 		}
@@ -739,7 +740,7 @@ var _ = Describe("ChannelParticipation", func() {
 			}
 		})
 
-		FIt("Creating the system channel with config block with number >0, when there are already channels referenced (created) by it, such that on boarding is needed for both the system channel and additional channels.", func() {
+		It("Creating the system channel with config block with number >0, when there are already channels referenced (created) by it, such that on boarding is needed for both the system channel and additional channels.", func() {
 			// It("Creating the system channel with config block with number >0, when there are already channels referenced (created) by it, such that on boarding is needed for both the system channel and additional channels.", func() {
 			orderer1 := network.Orderer("orderer1")
 			orderer2 := network.Orderer("orderer2")
@@ -794,13 +795,23 @@ var _ = Describe("ChannelParticipation", func() {
 			// err = c.Orderer().AddCapability("V1_1")
 			err = c.Orderer().SetBatchTimeout(4 * time.Second)
 			Expect(err).NotTo(HaveOccurred())
+			host, port := conftx.OrdererHostPort(network, orderer3)
+			err = c.Orderer().Organization(orderer3.Organization).RemoveEndpoint(
+				configtx.Address{
+					Host: host,
+					Port: port,
+				},
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			// protolator.DeepMarshalJSON(os.Stdout, c.UpdatedConfig())
 			computeSignSubmitConfigUpdate(network, orderer1, peer, c, network.SystemChannel.Name)
 
 			By("fetching config block")
 			configBlock := nwo.GetConfigBlock(network, peer, orderer2, network.SystemChannel.Name)
 			expectedChannelInfoMember := channelparticipation.ChannelInfo{
-				Name:            network.SystemChannel.Name,
-				URL:             fmt.Sprintf("/participation/v1/channels/%s", network.SystemChannel.Name),
+				Name:            "systemchannel",
+				URL:             "/participation/v1/channels/systemchannel",
 				Status:          "inactive",
 				ClusterRelation: "member",
 				Height:          0,
@@ -814,55 +825,66 @@ var _ = Describe("ChannelParticipation", func() {
 
 			By("listing the channels")
 			expectedChannelInfo = channelparticipation.ChannelInfo{
+				Name:            "systemchannel",
+				URL:             "/participation/v1/channels/systemchannel",
+				Status:          "active",
+				ClusterRelation: "member",
+				Height:          2,
+			}
+			By("listing single channel for orderer3 onboarding")
+			Eventually(func() channelparticipation.ChannelInfo {
+				return channelparticipation.ListOne(network, orderer3, network.SystemChannel.Name)
+			}, network.EventuallyTimeout).Should(Equal(expectedChannelInfo))
+			expectedChannelInfo = channelparticipation.ChannelInfo{
 				Name:            network.SystemChannel.Name,
 				URL:             fmt.Sprintf("/participation/v1/channels/%s", network.SystemChannel.Name),
 				Status:          "active",
 				ClusterRelation: "member",
-				Height:          1,
+				Height:          2,
 			}
 			for _, o := range orderers {
-				By("listing single channel")
+				By("listing single channel for " + o.Name)
 				Eventually(func() channelparticipation.ChannelInfo {
 					return channelparticipation.ListOne(network, o, network.SystemChannel.Name)
 				}, network.EventuallyTimeout).Should(Equal(expectedChannelInfo))
 			}
 
-			network.CreateChannel("testchannel1", orderer1, peer)
-			network.CreateChannel("testchannel1", orderer3, peer)
-			network.CreateChannel("testchannel2", orderer3, peer)
-			network.CreateChannel("testchannel3", orderer2, peer)
+			// network.CreateChannel("testchannel1", orderer1, peer)
+			// network.CreateChannel("testchannel1", orderer3, peer)
+			// network.CreateChannel("testchannel2", orderer3, peer)
+			// network.CreateChannel("testchannel3", orderer2, peer)
 
-			submitTxn(orderer1, peer, network, orderers, 1, channelparticipation.ChannelInfo{
-				Name:            "testchannel1",
-				URL:             fmt.Sprintf("/participation/v1/channels/%s", "testchannel1"),
-				Status:          "active",
-				ClusterRelation: "member",
-				Height:          1,
-			})
+			// submitTxn(orderer1, peer, network, orderers, 1, channelparticipation.ChannelInfo{
+			// 	Name:            "testchannel1",
+			// 	URL:             fmt.Sprintf("/participation/v1/channels/%s", "testchannel1"),
+			// 	Status:          "active",
+			// 	ClusterRelation: "member",
+			// 	Height:          1,
+			// })
 
-			submitTxn(orderer3, peer, network, orderers, 1, channelparticipation.ChannelInfo{
-				Name:            "testchannel1",
-				URL:             fmt.Sprintf("/participation/v1/channels/%s", "testchannel1"),
-				Status:          "active",
-				ClusterRelation: "member",
-				Height:          2,
-			})
+			// submitTxn(orderer3, peer, network, orderers, 1, channelparticipation.ChannelInfo{
+			// 	Name:            "testchannel1",
+			// 	URL:             fmt.Sprintf("/participation/v1/channels/%s", "testchannel1"),
+			// 	Status:          "active",
+			// 	ClusterRelation: "member",
+			// 	Height:          2,
+			// })
 
-			submitTxn(orderer3, peer, network, orderers, 1, channelparticipation.ChannelInfo{
-				Name:            "testchannel2",
-				URL:             fmt.Sprintf("/participation/v1/channels/%s", "testchannel2"),
-				Status:          "active",
-				ClusterRelation: "member",
-				Height:          1,
-			})
+			// submitTxn(orderer3, peer, network, orderers, 1, channelparticipation.ChannelInfo{
+			// 	Name:            "testchannel2",
+			// 	URL:             fmt.Sprintf("/participation/v1/channels/%s", "testchannel2"),
+			// 	Status:          "active",
+			// 	ClusterRelation: "member",
+			// 	Height:          1,
+			// })
 
-			submitTxn(orderer2, peer, network, orderers, 1, channelparticipation.ChannelInfo{
-				Name:            "testchannel3",
-				URL:             fmt.Sprintf("/participation/v1/channels/%s", "testchannel3"),
-				Status:          "active",
-				ClusterRelation: "member",
-				Height:          1,
-			})
+			// submitTxn(orderer2, peer, network, orderers, 1, channelparticipation.ChannelInfo{
+			// 	Name:            "testchannel3",
+			// 	URL:             fmt.Sprintf("/participation/v1/channels/%s", "testchannel3"),
+			// 	Status:          "active",
+			// 	ClusterRelation: "member",
+			// 	Height:          1,
+			// })
 
 		})
 	})

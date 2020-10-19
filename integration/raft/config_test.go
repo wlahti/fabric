@@ -21,11 +21,13 @@ import (
 
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric-config/configtx"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/msp"
 	protosorderer "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/hyperledger/fabric-protos-go/orderer/etcdraft"
 	"github.com/hyperledger/fabric/common/crypto/tlsgen"
+	conftx "github.com/hyperledger/fabric/integration/configtx"
 	"github.com/hyperledger/fabric/integration/nwo"
 	"github.com/hyperledger/fabric/integration/nwo/commands"
 	"github.com/hyperledger/fabric/integration/ordererclient"
@@ -242,7 +244,7 @@ var _ = Describe("EndToEnd reconfiguration and onboarding", func() {
 	})
 
 	When("a single node cluster is expanded", func() {
-		It("is still possible to onboard the new cluster member and then another one with a different TLS root CA", func() {
+		FIt("is still possible to onboard the new cluster member and then another one with a different TLS root CA", func() {
 			launch := func(o *nwo.Orderer) {
 				runner := network.OrdererRunner(o)
 				ordererRunners = append(ordererRunners, runner)
@@ -279,17 +281,35 @@ var _ = Describe("EndToEnd reconfiguration and onboarding", func() {
 			network.GenerateOrdererConfig(orderer2)
 			extendNetwork(network)
 
-			secondOrdererCertificatePath := filepath.Join(network.OrdererLocalTLSDir(orderer2), "server.crt")
-			secondOrdererCertificate, err := ioutil.ReadFile(secondOrdererCertificatePath)
+			// secondOrdererCertificatePath := filepath.Join(network.OrdererLocalTLSDir(orderer2), "server.crt")
+			// secondOrdererCertificate, err := ioutil.ReadFile(secondOrdererCertificatePath)
+			// Expect(err).NotTo(HaveOccurred())
+
+			// By("Adding the second orderer")
+			// addConsenter(network, peer, orderer, "systemchannel", etcdraft.Consenter{
+			// 	ServerTlsCert: secondOrdererCertificate,
+			// 	ClientTlsCert: secondOrdererCertificate,
+			// 	Host:          "127.0.0.1",
+			// 	Port:          uint32(network.OrdererPort(orderer2, nwo.ClusterPort)),
+			// })
+
+			By("adding the second orderer to the consenters set and as an endpoint")
+			channelConfig := nwo.GetConfig(network, peer, orderer, network.SystemChannel.Name)
+			c := configtx.New(channelConfig)
+			err := c.Orderer().SetBatchTimeout(4 * time.Second)
+			Expect(err).NotTo(HaveOccurred())
+			host, port := conftx.OrdererHostPort(network, orderer2)
+			err = c.Orderer().Organization(orderer2.Organization).SetEndpoint(
+				configtx.Address{
+					Host: host,
+					Port: port,
+				},
+			)
+			err = c.Orderer().AddConsenter(consenterChannelConfig(network, orderer2))
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Adding the second orderer")
-			addConsenter(network, peer, orderer, "systemchannel", etcdraft.Consenter{
-				ServerTlsCert: secondOrdererCertificate,
-				ClientTlsCert: secondOrdererCertificate,
-				Host:          "127.0.0.1",
-				Port:          uint32(network.OrdererPort(orderer2, nwo.ClusterPort)),
-			})
+			By("submitting the config update to add orderer2")
+			computeSignSubmitConfigUpdate(network, orderer, peer, c, network.SystemChannel.Name)
 
 			By("Obtaining the last config block from the orderer")
 			// Get the last config block of the system channel
