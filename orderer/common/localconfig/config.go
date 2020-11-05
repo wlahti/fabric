@@ -414,11 +414,6 @@ func (c *TopLevel) completeInitialization(configDir string) {
 			c.General.Cluster.ReplicationBackgroundRefreshInterval = Defaults.General.Cluster.ReplicationBackgroundRefreshInterval
 		case c.General.Cluster.CertExpirationWarningThreshold == 0:
 			c.General.Cluster.CertExpirationWarningThreshold = Defaults.General.Cluster.CertExpirationWarningThreshold
-		case c.General.Cluster.ListenAddress == c.General.ListenAddress && c.General.Cluster.ListenPort == c.General.ListenPort &&
-			c.General.Cluster.ClientCertificate == "" && c.General.Cluster.ClientPrivateKey == "":
-			logger.Infof("General.Cluster.ClientCertificate and General.Cluster.ClientPrivateKey unset, setting to General.TLS.ServerCertificate and General.TLS.ServerPrivateKey")
-			c.General.Cluster.ClientCertificate = c.General.TLS.Certificate
-			c.General.Cluster.ClientPrivateKey = c.General.TLS.PrivateKey
 		case c.Kafka.TLS.Enabled && c.Kafka.TLS.Certificate == "":
 			logger.Panicf("General.Kafka.TLS.Certificate must be set if General.Kafka.TLS.Enabled is set to true.")
 		case c.Kafka.TLS.Enabled && c.Kafka.TLS.PrivateKey == "":

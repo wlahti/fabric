@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 	"time"
 
@@ -271,19 +270,4 @@ func TestChannelParticipationDefaults(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, cfg.ChannelParticipation.Enabled, Defaults.ChannelParticipation.Enabled)
 	require.Equal(t, cfg.ChannelParticipation.MaxRequestBodySize, Defaults.ChannelParticipation.MaxRequestBodySize)
-}
-
-func TestReusedClusterListener(t *testing.T) {
-	os.Setenv("ORDERER_GENERAL_CLUSTER_LISTENADDRESS", Defaults.General.ListenAddress)
-	defer os.Unsetenv("ORDERER_GENERAL_CLUSTER_LISTENADDRESS")
-	os.Setenv("ORDERER_GENERAL_CLUSTER_LISTENPORT", strconv.Itoa(int(Defaults.General.ListenPort)))
-	defer os.Unsetenv("ORDERER_GENERAL_CLUSTER_LISTENPORT")
-	cleanup := configtest.SetDevFabricConfigPath(t)
-	defer cleanup()
-
-	cc := &configCache{}
-	cfg, err := cc.load()
-	require.NoError(t, err)
-	require.Equal(t, cfg.General.Cluster.ClientCertificate, cfg.General.TLS.Certificate)
-	require.Equal(t, cfg.General.Cluster.ClientPrivateKey, cfg.General.TLS.PrivateKey)
 }
