@@ -91,7 +91,7 @@ var _ = Describe("ChannelParticipation", func() {
 		}
 
 		BeforeEach(func() {
-			network = nwo.New(nwo.MultiNodeEtcdRaft(), testDir, client, StartPort(), components)
+			network = nwo.New(multiNodeEtcdRaftTwoChannels(), testDir, client, StartPort(), components)
 			network.Consensus.ChannelParticipationEnabled = true
 			network.Consensus.BootstrapMethod = "none"
 			network.GenerateConfigTree()
@@ -517,7 +517,7 @@ var _ = Describe("ChannelParticipation", func() {
 			})
 		})
 
-		It("creates the system channel on two orderers with a genesis block and joins a third using a config block", func() {
+		FIt("creates the system channel on two orderers with a genesis block and joins a third using a config block", func() {
 			orderer1 := network.Orderer("orderer1")
 			orderer2 := network.Orderer("orderer2")
 			orderer3 := network.Orderer("orderer3")
@@ -561,41 +561,47 @@ var _ = Describe("ChannelParticipation", func() {
 				restartOrderer(o, i)
 			}
 
-			By("creating a channel")
+			By("creating two channels")
 			network.CreateChannel("testchannel", orderer1, org1peer0)
-
-			expectedChannelInfo = channelparticipation.ChannelInfo{
-				Name:              "testchannel",
-				URL:               "/participation/v1/channels/testchannel",
-				Status:            "active",
-				ConsensusRelation: "consenter",
-				Height:            1,
-			}
-			for _, o := range orderers1and2 {
-				By("listing single channel for " + o.Name)
-				Eventually(func() channelparticipation.ChannelInfo {
-					return channelparticipation.ListOne(network, o, "testchannel")
-				}, network.EventuallyTimeout).Should(Equal(expectedChannelInfo))
-			}
+			network.CreateChannel("testchannel2", orderer2, org1peer0)
 
 			for _, o := range orderers1and2 {
-				By("listing the channels for " + o.Name)
-				cl := channelparticipation.List(network, o)
-				channelparticipation.ChannelListMatcher(cl, []string{"testchannel"}, []string{"systemchannel"}...)
-			}
-
-			expectedChannelInfo = channelparticipation.ChannelInfo{
-				Name:              "systemchannel",
-				URL:               "/participation/v1/channels/systemchannel",
-				Status:            "active",
-				ConsensusRelation: "consenter",
-				Height:            2,
-			}
-			for _, o := range orderers1and2 {
-				By("listing single channel for " + o.Name)
+				By("listing systemchannel details for " + o.Name)
 				Eventually(func() channelparticipation.ChannelInfo {
 					return channelparticipation.ListOne(network, o, "systemchannel")
-				}, network.EventuallyTimeout).Should(Equal(expectedChannelInfo))
+				}, network.EventuallyTimeout).Should(Equal(channelparticipation.ChannelInfo{
+					Name:              "systemchannel",
+					URL:               "/participation/v1/channels/systemchannel",
+					Status:            "active",
+					ConsensusRelation: "consenter",
+					Height:            3,
+				}))
+
+				By("listing testchannel details for " + o.Name)
+				Eventually(func() channelparticipation.ChannelInfo {
+					return channelparticipation.ListOne(network, o, "testchannel")
+				}, network.EventuallyTimeout).Should(Equal(channelparticipation.ChannelInfo{
+					Name:              "testchannel",
+					URL:               "/participation/v1/channels/testchannel",
+					Status:            "active",
+					ConsensusRelation: "consenter",
+					Height:            1,
+				}))
+
+				By("listing testchannel2 details for " + o.Name)
+				Eventually(func() channelparticipation.ChannelInfo {
+					return channelparticipation.ListOne(network, o, "testchannel2")
+				}, network.EventuallyTimeout).Should(Equal(channelparticipation.ChannelInfo{
+					Name:              "testchannel2",
+					URL:               "/participation/v1/channels/testchannel2",
+					Status:            "active",
+					ConsensusRelation: "consenter",
+					Height:            1,
+				}))
+
+				By("listing the channels for " + o.Name)
+				cl := channelparticipation.List(network, o)
+				channelparticipation.ChannelListMatcher(cl, []string{"testchannel", "testchannel2"}, "systemchannel")
 			}
 
 			By("submitting transaction to each active orderer to confirm channel is usable")
@@ -643,11 +649,11 @@ var _ = Describe("ChannelParticipation", func() {
 
 			By("listing the channels for orderer3")
 			cl := channelparticipation.List(network, orderer3)
-			channelparticipation.ChannelListMatcher(cl, []string{"testchannel"}, []string{"systemchannel"}...)
+			channelparticipation.ChannelListMatcher(cl, []string{"testchannel", "testchannel2"}, "systemchannel")
 
 			By("ensuring orderer3 catches up to the latest height as an active consenter")
 			expectedChannelInfo.Status = "active"
-			expectedChannelInfo.Height = 3
+			expectedChannelInfo.Height = 4
 			Eventually(func() channelparticipation.ChannelInfo {
 				return channelparticipation.ListOne(network, orderer3, "systemchannel")
 			}, network.EventuallyTimeout).Should(Equal(expectedChannelInfo))
@@ -671,7 +677,7 @@ var _ = Describe("ChannelParticipation", func() {
 				URL:               "/participation/v1/channels/systemchannel",
 				Status:            "active",
 				ConsensusRelation: "consenter",
-				Height:            4,
+				Height:            5,
 			}
 			for _, o := range orderers {
 				By("listing single channel for " + o.Name)
@@ -680,7 +686,7 @@ var _ = Describe("ChannelParticipation", func() {
 				}, network.EventuallyTimeout).Should(Equal(expectedChannelInfo))
 			}
 
-			By("adding orderer3 to the consenters set and endpoints of the application channel")
+			By("adding orderer3 to the consenters set and endpoints of testchannel")
 			channelConfig = nwo.GetConfig(network, org1peer0, orderer1, "testchannel")
 			c = configtx.New(channelConfig)
 			err = c.Orderer().AddConsenter(consenterChannelConfig(network, orderer3))
@@ -694,7 +700,7 @@ var _ = Describe("ChannelParticipation", func() {
 			Expect(err).NotTo(HaveOccurred())
 			computeSignSubmitConfigUpdate(network, orderer1, org1peer0, c, "testchannel")
 
-			By("ensuring orderer3 becomes an active consenter for the application channel")
+			By("ensuring orderer3 becomes an active consenter for testchannel")
 			expectedChannelInfo = channelparticipation.ChannelInfo{
 				Name:              "testchannel",
 				URL:               "/participation/v1/channels/testchannel",
@@ -706,7 +712,19 @@ var _ = Describe("ChannelParticipation", func() {
 				return channelparticipation.ListOne(network, orderer3, "testchannel")
 			}, network.EventuallyTimeout).Should(Equal(expectedChannelInfo))
 
-			By("submitting transactions to ensure the application channel is usable")
+			By("ensuring orderer3 is an inactive config-tracker for testchannel2")
+			expectedChannelInfo = channelparticipation.ChannelInfo{
+				Name:              "testchannel2",
+				URL:               "/participation/v1/channels/testchannel2",
+				Status:            "inactive",
+				ConsensusRelation: "config-tracker",
+				Height:            1,
+			}
+			Eventually(func() channelparticipation.ChannelInfo {
+				return channelparticipation.ListOne(network, orderer3, "testchannel2")
+			}, network.EventuallyTimeout).Should(Equal(expectedChannelInfo))
+
+			By("submitting transactions to ensure testchannel is usable")
 			submitPeerTxn(orderer3, org1peer0, network, channelparticipation.ChannelInfo{
 				Name:              "testchannel",
 				URL:               "/participation/v1/channels/testchannel",
@@ -730,6 +748,80 @@ var _ = Describe("ChannelParticipation", func() {
 				ConsensusRelation: "consenter",
 				Height:            7,
 			})
+
+			By("submitting transactions to ensure testchannel2 is usable for orderer1 and orderer2")
+			submitPeerTxn(orderer2, org1peer0, network, channelparticipation.ChannelInfo{
+				Name:              "testchannel2",
+				URL:               "/participation/v1/channels/testchannel2",
+				Status:            "active",
+				ConsensusRelation: "consenter",
+				Height:            2,
+			})
+
+			submitPeerTxn(orderer1, org1peer0, network, channelparticipation.ChannelInfo{
+				Name:              "testchannel2",
+				URL:               "/participation/v1/channels/testchannel2",
+				Status:            "active",
+				ConsensusRelation: "consenter",
+				Height:            3,
+			})
+			By("ensuring orderer3 is still an inactive config-tracker for testchannel2")
+			expectedChannelInfo = channelparticipation.ChannelInfo{
+				Name:              "testchannel2",
+				URL:               "/participation/v1/channels/testchannel2",
+				Status:            "inactive",
+				ConsensusRelation: "config-tracker",
+				Height:            1,
+			}
+			Eventually(func() channelparticipation.ChannelInfo {
+				return channelparticipation.ListOne(network, orderer3, "testchannel2")
+			}, network.EventuallyTimeout).Should(Equal(expectedChannelInfo))
+
+			By("removing orderer3 from the consenters set and endpoints of the system channel")
+			channelConfig = nwo.GetConfig(network, org1peer0, orderer1, "systemchannel")
+			c = configtx.New(channelConfig)
+			err = c.Orderer().RemoveConsenter(consenterChannelConfig(network, orderer3))
+			Expect(err).NotTo(HaveOccurred())
+			err = c.Orderer().Organization(orderer3.Organization).RemoveEndpoint(
+				configtx.Address{
+					Host: host,
+					Port: port,
+				},
+			)
+			Expect(err).NotTo(HaveOccurred())
+			computeSignSubmitConfigUpdate(network, orderer1, org1peer0, c, "systemchannel")
+
+			By("stopping orderer3 and removing all of its ledger/raft resources")
+			ordererProcesses[2].Signal(syscall.SIGKILL)
+			Eventually(ordererProcesses[2].Wait(), network.EventuallyTimeout).Should(Receive(MatchError("exit status 137")))
+			os.RemoveAll(filepath.Join(network.OrdererDir(orderer3), "system"))
+			os.RemoveAll(filepath.Join(network.OrdererDir(orderer3), "etcdraft"))
+
+			By("starting a clean orderer3")
+			ordererRunner := network.OrdererRunner(orderer3)
+			ordererProcess := ifrit.Invoke(ordererRunner)
+			Eventually(ordererProcess.Ready(), network.EventuallyTimeout).Should(BeClosed())
+			ordererProcesses[2] = ordererProcess
+			ordererRunners[2] = ordererRunner
+
+			By("joining orderer3 to the system channel")
+			// make sure we can join using a config block from one of the other orderers
+			configBlockSC = nwo.GetConfigBlock(network, org1peer0, orderer2, "systemchannel")
+			expectedChannelInfo = channelparticipation.ChannelInfo{
+				Name:              "systemchannel",
+				URL:               "/participation/v1/channels/systemchannel",
+				Status:            "inactive",
+				ConsensusRelation: "consenter",
+				Height:            0,
+			}
+			channelparticipation.Join(network, orderer3, "systemchannel", configBlockSC, expectedChannelInfo)
+
+			By("restarting orderer3")
+			restartOrderer(orderer3, 2)
+
+			By("listing the channels for orderer3")
+			cl = channelparticipation.List(network, orderer3)
+			channelparticipation.ChannelListMatcher(cl, []string{"testchannel", "testchannel2"}, "systemchannel")
 		})
 
 		It("requires a client certificate to connect when TLS is enabled", func() {
@@ -1358,4 +1450,21 @@ func channelparticipationRemoveFailure(n *nwo.Network, o *nwo.Orderer, channel s
 	Expect(err).NotTo(HaveOccurred())
 
 	doBodyFailure(authClient, req, expectedStatus, expectedError)
+}
+
+func multiNodeEtcdRaftTwoChannels() *nwo.Config {
+	config := nwo.MultiNodeEtcdRaft()
+	config.Channels = []*nwo.Channel{
+		{Name: "testchannel", Profile: "TwoOrgsChannel"},
+		{Name: "testchannel2", Profile: "TwoOrgsChannel"},
+	}
+
+	for _, peer := range config.Peers {
+		peer.Channels = []*nwo.PeerChannel{
+			{Name: "testchannel", Anchor: true},
+			{Name: "testchannel2", Anchor: true},
+		}
+	}
+
+	return config
 }
