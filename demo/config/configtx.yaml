@@ -1,0 +1,263 @@
+---
+Organizations:
+- &Org1MSP
+  Name: Org1
+  ID: Org1MSP
+  MSPDir: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/peerOrganizations/org1.example.com/msp
+  Policies:
+    Readers:
+      Type: Signature
+      Rule: OR('Org1MSP.admin', 'Org1MSP.peer', 'Org1MSP.client')
+    Writers:
+      Type: Signature
+      Rule: OR('Org1MSP.admin', 'Org1MSP.client')
+    Endorsement:
+      Type: Signature
+      Rule: OR('Org1MSP.peer')
+    Admins:
+      Type: Signature
+      Rule: OR('Org1MSP.admin')
+  AnchorPeers:
+  - Host: 127.0.0.1
+    Port: 26512
+- &Org2MSP
+  Name: Org2
+  ID: Org2MSP
+  MSPDir: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/peerOrganizations/org2.example.com/msp
+  Policies:
+    Readers:
+      Type: Signature
+      Rule: OR('Org2MSP.admin', 'Org2MSP.peer', 'Org2MSP.client')
+    Writers:
+      Type: Signature
+      Rule: OR('Org2MSP.admin', 'Org2MSP.client')
+    Endorsement:
+      Type: Signature
+      Rule: OR('Org2MSP.peer')
+    Admins:
+      Type: Signature
+      Rule: OR('Org2MSP.admin')
+  AnchorPeers:
+  - Host: 127.0.0.1
+    Port: 26517
+- &OrdererMSP
+  Name: OrdererOrg
+  ID: OrdererMSP
+  MSPDir: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/msp
+  Policies:
+    Readers:
+      Type: Signature
+      Rule: OR('OrdererMSP.member')
+    Writers:
+      Type: Signature
+      Rule: OR('OrdererMSP.member')
+    Admins:
+      Type: Signature
+      Rule: OR('OrdererMSP.admin')
+  OrdererEndpoints:
+  - 127.0.0.1:26500
+
+Channel: &ChannelDefaults
+  Capabilities:
+    V2_0: true
+  Policies: &DefaultPolicies
+    Readers:
+      Type: ImplicitMeta
+      Rule: ANY Readers
+    Writers:
+      Type: ImplicitMeta
+      Rule: ANY Writers
+    Admins:
+      Type: ImplicitMeta
+      Rule: ANY Admins
+
+Profiles:
+  EtcdRaftAppChannel:
+    <<: *ChannelDefaults
+    Orderer:
+      OrdererType: etcdraft
+      Addresses:
+      - 127.0.0.1:26500
+      BatchTimeout: 1s
+      BatchSize:
+        MaxMessageCount: 1
+        AbsoluteMaxBytes: 98 MB
+        PreferredMaxBytes: 512 KB
+      Capabilities:
+        V2_0: true
+      EtcdRaft:
+        Options:
+          TickInterval: 500ms
+          SnapshotIntervalSize: 1 KB
+        Consenters:
+        - Host: 127.0.0.1
+          Port: 26503
+          ClientTLSCert: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt
+          ServerTLSCert: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt
+      Organizations:
+      - *OrdererMSP
+      Policies:
+        Readers:
+          Type: ImplicitMeta
+          Rule: ANY Readers
+        Writers:
+          Type: ImplicitMeta
+          Rule: ANY Writers
+        Admins:
+          Type: ImplicitMeta
+          Rule: ANY Admins
+        BlockValidation:
+          Type: ImplicitMeta
+          Rule: ANY Writers
+    Application:
+      Capabilities:
+        V2_0: true
+      Organizations:
+      - *Org1MSP
+      Policies:
+        Readers:
+          Type: ImplicitMeta
+          Rule: ANY Readers
+        Writers:
+          Type: ImplicitMeta
+          Rule: ANY Writers
+        Admins:
+          Type: ImplicitMeta
+          Rule: ANY Admins
+        LifecycleEndorsement:
+          Type: ImplicitMeta
+          Rule: "MAJORITY Endorsement"
+        Endorsement:
+          Type: ImplicitMeta
+          Rule: "MAJORITY Endorsement"
+  EtcdRaftSystemChannel:
+    <<: *ChannelDefaults
+    Orderer:
+      OrdererType: etcdraft
+      Addresses:
+      - 127.0.0.1:26500
+      - 127.0.0.1:26505
+      BatchTimeout: 1s
+      BatchSize:
+        MaxMessageCount: 1
+        AbsoluteMaxBytes: 98 MB
+        PreferredMaxBytes: 512 KB
+      Capabilities:
+        V2_0: true
+      EtcdRaft:
+        Options:
+          TickInterval: 500ms
+          SnapshotIntervalSize: 1 KB
+        Consenters:
+        - Host: 127.0.0.1
+          Port: 26503
+          ClientTLSCert: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt
+          ServerTLSCert: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt
+        - Host: 127.0.0.1
+          Port: 26508
+          ClientTLSCert: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.crt
+          ServerTLSCert: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.crt
+      Organizations:
+      - *OrdererMSP
+      Policies:
+        Readers:
+          Type: ImplicitMeta
+          Rule: ANY Readers
+        Writers:
+          Type: ImplicitMeta
+          Rule: ANY Writers
+        Admins:
+          Type: ImplicitMeta
+          Rule: ANY Admins
+        BlockValidation:
+          Type: ImplicitMeta
+          Rule: ANY Writers
+    Consortiums:
+      SampleConsortium:
+        Organizations:
+        - *Org1MSP
+        - *Org2MSP
+  EtcdRaftAppChannelExtraEndpoint:
+    <<: *ChannelDefaults
+    Orderer:
+      OrdererType: etcdraft
+      Addresses:
+      - 127.0.0.1:26500
+      - 127.0.0.1:26505
+      BatchTimeout: 1s
+      BatchSize:
+        MaxMessageCount: 1
+        AbsoluteMaxBytes: 98 MB
+        PreferredMaxBytes: 512 KB
+      Capabilities:
+        V2_0: true
+      EtcdRaft:
+        Options:
+          TickInterval: 500ms
+          SnapshotIntervalSize: 1 KB
+        Consenters:
+        - Host: 127.0.0.1
+          Port: 26503
+          ClientTLSCert: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt
+          ServerTLSCert: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt
+      Organizations:
+      - *OrdererMSP
+      Policies:
+        Readers:
+          Type: ImplicitMeta
+          Rule: ANY Readers
+        Writers:
+          Type: ImplicitMeta
+          Rule: ANY Writers
+        Admins:
+          Type: ImplicitMeta
+          Rule: ANY Admins
+        BlockValidation:
+          Type: ImplicitMeta
+          Rule: ANY Writers
+    Application:
+      Capabilities:
+        V2_0: true
+      Organizations:
+      - *Org1MSP
+      Policies:
+        Readers:
+          Type: ImplicitMeta
+          Rule: ANY Readers
+        Writers:
+          Type: ImplicitMeta
+          Rule: ANY Writers
+        Admins:
+          Type: ImplicitMeta
+          Rule: ANY Admins
+        LifecycleEndorsement:
+          Type: ImplicitMeta
+          Rule: "MAJORITY Endorsement"
+        Endorsement:
+          Type: ImplicitMeta
+          Rule: "MAJORITY Endorsement"
+  TwoOrgChannel:
+    <<: *ChannelDefaults
+    Consortium: SampleConsortium
+    Application:
+      Capabilities:
+        V2_0: true
+      Organizations:
+      - *Org1MSP
+      - *Org2MSP
+      Policies:
+        Readers:
+          Type: ImplicitMeta
+          Rule: ANY Readers
+        Writers:
+          Type: ImplicitMeta
+          Rule: ANY Writers
+        Admins:
+          Type: ImplicitMeta
+          Rule: ANY Admins
+        LifecycleEndorsement:
+          Type: ImplicitMeta
+          Rule: "MAJORITY Endorsement"
+        Endorsement:
+          Type: ImplicitMeta
+          Rule: "MAJORITY Endorsement"

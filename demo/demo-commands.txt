@@ -1,0 +1,34 @@
+// system channel genesis block
+FABRIC_CFG_PATH=$FABRIC/demo/config configtxgen -outputBlock $FABRIC/demo/system-channel-genesis-block.pb -profile EtcdRaftSystemChannel -channelID systemchannel
+
+// application channel genesis block
+FABRIC_CFG_PATH=$FABRIC/demo/config configtxgen -outputBlock $FABRIC/demo/participation-trophy-genesis-block.pb -profile EtcdRaftAppChannel -channelID participation-trophy
+
+FABRIC_CFG_PATH=$FABRIC/demo/config/orderers/OrdererOrg.orderer1 orderer
+FABRIC_CFG_PATH=$FABRIC/demo/config/orderers/OrdererOrg.orderer2 orderer
+
+// orderer1 commands
+osnadmin channel list -o 127.0.0.1:26504 --ca-file $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/ca.crt --client-cert $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt --client-key $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.key
+
+osnadmin channel list -o 127.0.0.1:26504 --ca-file $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/ca.crt --client-cert $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt --client-key $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.key --channel-id systemchannel
+
+osnadmin channel join -o 127.0.0.1:26504 --ca-file $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/ca.crt --client-cert $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt --client-key $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.key --channel-id participation-trophy --config-block $FABRIC/demo/participation-trophy-genesis-block.pb
+
+osnadmin channel remove -o 127.0.0.1:26504 --ca-file $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/ca.crt --client-cert $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt --client-key $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.key --channel-id systemchannel
+
+osnadmin channel list -o 127.0.0.1:26504 --ca-file $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/ca.crt --client-cert $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt --client-key $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.key --channel-id participation-trophy
+
+osnadmin channel remove -o 127.0.0.1:26504 --ca-file $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/ca.crt --client-cert $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt --client-key $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.key --channel-id participation-trophy
+
+// orderer2 commands
+osnadmin channel list -o 127.0.0.1:26509 --ca-file $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/ca.crt --client-cert $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.crt --client-key $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.key
+
+osnadmin channel list -o 127.0.0.1:26509 --ca-file $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/ca.crt --client-cert $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.crt --client-key $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.key --channel-id systemchannel
+
+osnadmin channel remove -o 127.0.0.1:26509 --ca-file $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/ca.crt --client-cert $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.crt --client-key $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.key --channel-id systemchannel
+
+osnadmin channel join -o 127.0.0.1:26509 --ca-file $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/ca.crt --client-cert $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.crt --client-key $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.key --channel-id participation-trophy --config-block $FABRIC/demo/participation-trophy-genesis-block.pb
+
+osnadmin channel list -o 127.0.0.1:26509 --ca-file $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/ca.crt --client-cert $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.crt --client-key $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.key --channel-id participation-trophy
+
+osnadmin channel remove -o 127.0.0.1:26509 --ca-file $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/ca.crt --client-cert $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.crt --client-key $FABRIC/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.key --channel-id participation-trophy

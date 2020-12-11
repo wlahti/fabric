@@ -1,0 +1,88 @@
+---
+General:
+  ListenAddress: 127.0.0.1
+  ListenPort: 26500
+  TLS:
+    Enabled: true
+    PrivateKey: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.key
+    Certificate: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt
+    RootCAs:
+    -  /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/ca.crt
+    ClientAuthRequired: false
+    ClientRootCAs:
+  Cluster:
+    ClientCertificate: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt
+    ClientPrivateKey: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.key
+    ServerCertificate: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt
+    ServerPrivateKey: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.key
+    DialTimeout: 5s
+    RPCTimeout: 7s
+    ReplicationBufferSize: 20971520
+    ReplicationPullTimeout: 1s
+    ReplicationRetryTimeout: 1s
+    ReplicationMaxRetries: 2
+    ListenAddress: 127.0.0.1
+    ListenPort: 26503
+  Keepalive:
+    ServerMinInterval: 60s
+    ServerInterval: 7200s
+    ServerTimeout: 20s
+  BootstrapMethod: none
+  # BootstrapMethod: file
+  # BootstrapFile: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/system-channel-genesis-block.pb
+  LocalMSPDir: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/msp
+  LocalMSPID: OrdererMSP
+  Profile:
+    Enabled: false
+    Address: 127.0.0.1:26501
+  BCCSP:
+    Default: SW
+    SW:
+      Hash: SHA2
+      Security: 256
+      FileKeyStore:
+        KeyStore:
+  Authentication:
+    TimeWindow: 15m
+FileLedger:
+  Location: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/orderers/OrdererOrg.orderer1/system
+
+Debug:
+  BroadcastTraceDir:
+  DeliverTraceDir:
+Consensus:
+  WALDir: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/orderers/OrdererOrg.orderer1/etcdraft/wal
+  SnapDir: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/orderers/OrdererOrg.orderer1/etcdraft/snapshot
+  EvictionSuspicion: 10s
+Operations:
+  ListenAddress: 127.0.0.1:26502
+  TLS:
+    Enabled: true
+    PrivateKey: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.key
+    Certificate: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt
+    RootCAs:
+    -  /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/ca.crt
+    ClientAuthRequired: false
+    ClientRootCAs:
+    -  /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/ca.crt
+Metrics:
+  Provider: prometheus
+  Statsd:
+    Network: udp
+    Address: 127.0.0.1:8125
+    WriteInterval: 5s
+    Prefix: ordererorg_orderer1
+Admin:
+  ListenAddress: 127.0.0.1:26504
+  TLS:
+    Enabled: false 
+    PrivateKey: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.key
+    Certificate: /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt
+    RootCAs:
+    -  /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/ca.crt
+    ClientAuthRequired: false
+    ClientRootCAs:
+    -  /Users/wlahti/gopath/src/github.com/hyperledger/fabric/demo/config/crypto/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/ca.crt
+ChannelParticipation:
+  Enabled: true
+  MaxRequestBodySize: 1 MB
